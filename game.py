@@ -179,6 +179,18 @@ def _pop_queued_secret(conn: sqlite3.Connection, date: str) -> tuple[str, str] |
     return secret, set_by
 
 
+def _purge_old_days(conn: sqlite3.Connection, date: str) -> None:
+    """刪除 date 之前的每日紀錄(排行榜、猜測紀錄、練習題)。"""
+    conn.execute("DELETE FROM guess_log WHERE date < ?", (date,))
+    conn.execute("DELETE FROM user_day WHERE date < ?", (date,))
+    conn.execute(
+        "DELETE FROM practice_log WHERE game_id IN (SELECT id FROM practice_game WHERE date < ?)",
+        (date,),
+    )
+    conn.execute("DELETE FROM practice_game WHERE date < ?", (date,))
+    conn.execute("DELETE FROM daily_secret WHERE date < ?", (date,))
+
+
 def get_today_secret(conn: sqlite3.Connection, date: str) -> tuple[str, str | None]:
     """回傳 (secret, set_by)。若當天題目不存在則建立(優先取排隊題目)。"""
     row = conn.execute(
@@ -203,6 +215,7 @@ def get_today_secret(conn: sqlite3.Connection, date: str) -> tuple[str, str | No
             "INSERT INTO daily_secret (date, secret, set_by, created_at) VALUES (?, ?, ?, ?)",
             (date, secret, set_by, now_iso()),
         )
+        _purge_old_days(conn, date)
         conn.commit()
         return secret, set_by
     except Exception:
